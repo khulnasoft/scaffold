@@ -1,0 +1,9 @@
+periodics:
+- name: egw-baseline-100-20-main
+  tags:
+  - "perfDashPrefix: egw-baseline-main"
+  - "perfDashJobType: networking"
+- name: egw-egw-100-20-main
+  tags:
+  - "perfDashPrefix: egw-main"
+  - "perfDashJobType: networking"
