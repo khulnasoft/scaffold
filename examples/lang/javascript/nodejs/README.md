@@ -4,7 +4,7 @@
 
 The full steps to install Node.js into the container are provided at:
 
-  https://www.sylabs.io/2018/09/nodejs-on-singularity/
+  https://www.khulnasoft.com/2018/09/nodejs-on-singularity/
 
 A quick run through follows:
 

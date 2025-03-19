@@ -1,4 +1,4 @@
-See: https://www.sylabs.io/2018/10/facebook-research-detectron/
+See: https://www.khulnasoft.com/2018/10/facebook-research-detectron/
 
 Detectron is an object detection system written in Python and powered by Caffe2. [Detectron is a Facebook Research project](https://github.com/facebookresearch/Detectron) created to solve real world problems, particularly for deep learning applications.
 

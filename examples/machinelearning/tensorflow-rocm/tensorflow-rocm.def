@@ -36,4 +36,4 @@ From: rocm/tensorflow:rocm2.8-tf1.14-dev
     bash
 
 %labels
-    Maintainer "David Trudgian <david.trudgian@sylabs.io>"
+    Maintainer "David Trudgian <david.trudgian@khulnasoft.com>"

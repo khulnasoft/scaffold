@@ -53,7 +53,7 @@ Verifying the container:
 $ singularity verify ronn.sif
 Verifying image: ronn.sif
 Data integrity checked, authentic and signed by:
-        Sylabs Admin <support@sylabs.io>, KeyID EDECE4F3F38D871E
+        Sylabs Admin <support@khulnasoft.com>, KeyID EDECE4F3F38D871E
 ```
 
 <br>

@@ -40,7 +40,7 @@ Verify the container: (Optional)
 $ singularity verify nginx.sif 
 Verifying image: nginx.sif
 Data integrity checked, authentic and signed by:
-        Sylabs Admin <support@sylabs.io>, KeyID EDECE4F3F38D871E
+        Sylabs Admin <support@khulnasoft.com>, KeyID EDECE4F3F38D871E
 ```
 
 <br>

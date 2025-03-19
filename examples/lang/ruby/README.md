@@ -47,7 +47,7 @@ Verify the container: (Optional)
 $ singularity verify ruby.sif 
 Verifying image: ruby.sif
 Data integrity checked, authentic and signed by:
-        westleyk (examples) <westley@sylabs.io>, KeyID F1E47D55A7F3A56C
+        westleyk (examples) <westley@khulnasoft.com>, KeyID F1E47D55A7F3A56C
 ```
 
 <br>

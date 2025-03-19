@@ -158,9 +158,9 @@ Check output at: `cornell.jpg`.
 
 With the `cornell.ass` example, you will get output like:
 
-![alt text](https://www.sylabs.io/wp-content/uploads/2018/09/cornell.jpg)
+![alt text](https://www.khulnasoft.com/wp-content/uploads/2018/09/cornell.jpg)
 
-*The image is from: https://www.sylabs.io/wp-content/uploads/2018/09/cornell.jpg*
+*The image is from: https://www.khulnasoft.com/wp-content/uploads/2018/09/cornell.jpg*
 
 <br>
 <br>

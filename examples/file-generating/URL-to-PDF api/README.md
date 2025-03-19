@@ -72,7 +72,7 @@ or while using it later, you can try specifying different port numbers in the de
 We can confirm it’s working by sending the server an http request using curl:
 
 ```
-$ curl -o sylabs.pdf localhost:9000/api/render?url=http://sylabs.io/docs
+$ curl -o sylabs.pdf localhost:9000/api/render?url=http://khulnasoft.com/docs
 
 % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
                          Dload  Upload   Total   Spent    Left  Speed
@@ -148,7 +148,7 @@ $ sudo singularity instance start --bind out/:/output url-to-pdf.sif pdf
 ```
 To request a pdf simply do:
 ```
-$ sudo singularity run --app pdf_client instance://pdf http://sylabs.io/docs sylabs.pdf
+$ sudo singularity run --app pdf_client instance://pdf http://khulnasoft.com/docs sylabs.pdf
 ```
 To confirm that it worked:
 ```

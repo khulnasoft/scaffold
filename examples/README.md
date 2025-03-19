@@ -1,6 +1,6 @@
 # Examples
 Here you can find files and instructions for creating and using example
-containers from the [sylabs.io blog](https://www.sylabs.io/lab-notes/).  
+containers from the [khulnasoft.com blog](https://www.khulnasoft.com/lab-notes/).  
 
 Each example resides in its own subdirectory with its own README.md and definition
 file.

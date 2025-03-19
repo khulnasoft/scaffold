@@ -40,7 +40,7 @@ If you're building the container from a definition file, click [here](#building-
 $ singularity verify blender.sif
 Verifying image: blender.sif
 Data integrity checked, authentic and signed by:
-        Sylabs Admin <support@sylabs.io>, KeyID EDECE4F3F38D871E
+        Sylabs Admin <support@khulnasoft.com>, KeyID EDECE4F3F38D871E
 ```
 
 

@@ -10,7 +10,7 @@ Provided here is all the setup required for Singularity, based on the following 
 
 ### Prerequisites
 * Singularity (>=3.0.0) - Install from [here](https://github.com/khulnasoft/scaffold/blob/master/INSTALL.md)
-* Debootstrap module - Install from [here](https://www.sylabs.io/guides/3.0/user-guide/appendix.html?highlight=debootstrap#id14)
+* Debootstrap module - Install from [here](https://www.khulnasoft.com/guides/3.0/user-guide/appendix.html?highlight=debootstrap#id14)
 
 **NOTE:** All definition files where built and tested on`Ubuntu 16.04`.
 

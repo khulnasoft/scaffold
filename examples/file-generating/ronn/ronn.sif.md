@@ -77,5 +77,5 @@ for full tutorial/info, visit: `https://github.com/khulnasoft/scaffold`
 definition file made by: `WestleyK` <westleyk@nym.hush.com>
 
 ## REPORTING BUGS
-`https://github.com/khulnasoft/scaffold` or <support@sylabs.io>
+`https://github.com/khulnasoft/scaffold` or <support@khulnasoft.com>
 

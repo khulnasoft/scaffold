@@ -41,7 +41,7 @@ If you're running on `32 bit` os, you will need to build from a definition file,
 $ singularity verify httpd.sif
 Verifying image: httpd.sif
 Data integrity checked, authentic and signed by:
-        Sylabs Admin <support@sylabs.io>, KeyID EDECE4F3F38D871E
+        Sylabs Admin <support@khulnasoft.com>, KeyID EDECE4F3F38D871E
 ```
 
 <br>

@@ -22,4 +22,4 @@ $ sudo singularity instance start jupyter.sif jupyter
 ```
 
 See the write-up at:
-https://www.sylabs.io/2018/10/jupyter-notebook/
+https://www.khulnasoft.com/2018/10/jupyter-notebook/

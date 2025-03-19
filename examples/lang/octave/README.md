@@ -250,11 +250,11 @@ INFO:    key missing, searching key server for KeyID: EDECE4F3F38D871E...
 INFO:    key retreived successfully!
 Store new public key 8883491F4268F173C6E5DC49EDECE4F3F38D871E? [Y/n] y
 Data integrity checked, authentic and signed by:
-	Sylabs Admin <support@sylabs.io>, KeyID EDECE4F3F38D871E
+	Sylabs Admin <support@khulnasoft.com>, KeyID EDECE4F3F38D871E
 ```
 
 Signing and verifying containers produces an unbroken chain of trust between the
 container author and the end user. If you want more information about signing
 and verifying your own containers so that you can share them with your friends 
 or colleagues securely, check the 
-[Singularity docs](https://www.sylabs.io/guides/3.0/user-guide/signNverify.html).
+[Singularity docs](https://www.khulnasoft.com/guides/3.0/user-guide/signNverify.html).
