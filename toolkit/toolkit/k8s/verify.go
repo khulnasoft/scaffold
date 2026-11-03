@@ -8,8 +8,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/khulnasoft/scaffold/toolkit/toolkit"
 )
 
 // GetNestedSliceStringInterfaceMap returns a slice of string to interface maps within the given unstructured
@@ -38,6 +36,21 @@ func GetNestedSliceStringInterfaceMap(
 	return typed, true, nil
 }
 
+func pullStringValue(m map[string]interface{}, key string) (string, bool, error) {
+	if m == nil {
+		return "", false, fmt.Errorf("map is nil while reading %s", key)
+	}
+	value, ok := m[key]
+	if !ok {
+		return "", false, nil
+	}
+	stringValue, ok := value.(string)
+	if !ok {
+		return "", true, fmt.Errorf("value for %s is not a string: %#v", key, value)
+	}
+	return stringValue, true, nil
+}
+
 // DoesContainerStatusShowCompleted takes the given containerStatus map and returns whether or not the status shows
 // the container as having terminated with the reason "Completed".
 func DoesContainerStatusShowCompleted(containerStatus map[string]interface{}) (bool, error) {
@@ -58,13 +71,19 @@ func DoesContainerStatusShowCompleted(containerStatus map[string]interface{}) (b
 // condition is showing not ready.
 // Essentially just a big switch statement.
 func DoesConditionShowReady(condition map[string]interface{}) (bool, error) {
-	ct, err := toolkit.PullStrKey("type", condition)
+	ct, ctFound, err := pullStringValue(condition, "type")
 	if err != nil {
 		return false, err
 	}
-	cs, err := toolkit.PullStrKey("status", condition)
+	if !ctFound {
+		return false, fmt.Errorf("condition missing type: %#v", condition)
+	}
+	cs, csFound, err := pullStringValue(condition, "status")
 	if err != nil {
 		return false, err
+	}
+	if !csFound {
+		return false, fmt.Errorf("condition missing status: %#v", condition)
 	}
 	switch ct {
 	case "Ready", "Initialized", "ContainersReady", "PodScheduled", "Progressing", "Available", "PodReadyToStartContainers":
@@ -152,7 +171,15 @@ func CheckUnstructuredForReadyState(logger *log.Logger, resource *unstructured.U
 		statusStringBuilder.WriteString("Conditions: ")
 		logger.WithField("conditions", conditions).Debug("evaluating conditions")
 		for i, condition := range conditions {
-			if condition["status"].(string) == string(v1.ConditionTrue) {
+			conditionType, _, err := pullStringValue(condition, "type")
+			if err != nil {
+				return false, err
+			}
+			conditionStatus, _, err := pullStringValue(condition, "status")
+			if err != nil {
+				return false, err
+			}
+			if conditionStatus == string(v1.ConditionTrue) {
 				statusStringBuilder.WriteString("+")
 			} else {
 				statusStringBuilder.WriteString("-")
@@ -162,10 +189,10 @@ func CheckUnstructuredForReadyState(logger *log.Logger, resource *unstructured.U
 				return false, err
 			}
 			if !conditionShowsReady {
-				badConditions = append(badConditions, condition["type"].(string))
+				badConditions = append(badConditions, conditionType)
 				resourceIsReady = false
 			}
-			statusStringBuilder.WriteString(string(condition["type"].(string)))
+			statusStringBuilder.WriteString(conditionType)
 			if i < len(conditions)-1 {
 				statusStringBuilder.WriteString(" ")
 			}
@@ -179,8 +206,18 @@ func CheckUnstructuredForReadyState(logger *log.Logger, resource *unstructured.U
 		addComma = true
 		statusStringBuilder.WriteString("Containers: ")
 		for _, containerStatus := range containerStatuses {
-			name := containerStatus["name"].(string)
-			if containerStatus["ready"].(bool) {
+			name, _, err := pullStringValue(containerStatus, "name")
+			if err != nil {
+				return false, err
+			}
+			ready, readyFound, err := unstructured.NestedBool(containerStatus, "ready")
+			if err != nil {
+				return false, err
+			}
+			if !readyFound {
+				return false, fmt.Errorf("container status missing ready flag: %#v", containerStatus)
+			}
+			if ready {
 				statusStringBuilder.WriteString("+")
 			} else {
 				completed, err := DoesContainerStatusShowCompleted(containerStatus)
@@ -189,9 +226,14 @@ func CheckUnstructuredForReadyState(logger *log.Logger, resource *unstructured.U
 				}
 				if completed {
 					statusStringBuilder.WriteString("*")
-					// mark resource as ready of containers were shown as not ready
-					// and no other conditions were impacting pod health
-					if len(badConditions) == 2 && toolkit.SliceContains(badConditions, "Ready") {
+					allBadConditionsAreCompletedReadySignals := true
+					for _, badCondition := range badConditions {
+						if badCondition != "Ready" && badCondition != "ContainersReady" {
+							allBadConditionsAreCompletedReadySignals = false
+							break
+						}
+					}
+					if allBadConditionsAreCompletedReadySignals {
 						resourceIsReady = true
 					}
 				} else {

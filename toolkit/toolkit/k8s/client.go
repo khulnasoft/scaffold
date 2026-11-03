@@ -31,10 +31,12 @@ func FindKubeconfig(logger *log.Logger) string {
 	}
 
 	cwd, err := os.Getwd()
-	kubeCwd := filepath.Join(cwd, "kubeconfig")
-	if err != nil && toolkit.PathExists(kubeCwd) {
-		logFoundKube(kubeCwd, "cwd")
-		return kubeCwd
+	if err == nil {
+		kubeCwd := filepath.Join(cwd, "kubeconfig")
+		if toolkit.PathExists(kubeCwd) {
+			logFoundKube(kubeCwd, "cwd")
+			return kubeCwd
+		}
 	}
 
 	home := homedir.HomeDir()

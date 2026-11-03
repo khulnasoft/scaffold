@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/khulnasoft/scaffold/toolkit/cmd"
 	log "github.com/sirupsen/logrus"
 )
@@ -10,5 +12,7 @@ func init() {
 }
 
 func main() {
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
