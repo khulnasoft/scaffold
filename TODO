@@ -1,252 +1,59 @@
-# Engineering audit: `khulnasoft/scaffold`
+# TODO
 
-**Bottom line:** Scaffold is a practical collection of Kubernetes performance-testing tools, benchmark scenarios, scripts, manifests, and notebooks. Its strongest assets are its concrete use cases, documented workflows, and existing Go lint/build automation. The most actionable engineering gaps are unreliable command exit status, a kubeconfig lookup bug, limited visible automated testing, and operational concerns in the scale-test client.
+## P1 - Critical fixes required before release
 
-This is an **analysis-only audit**; I did not modify files. It is based on the repository metadata and files inspected on `main` at commit [`1431397`](https://github.com/khulnasoft/scaffold/commit/14313974f327fbefef6893f12f06fba4e71bc092). The repository is notebook-heavy, consistent with the supplied language composition and GitHub’s language data. I inspected representative documentation, Go modules, CI workflows, and utility code—not every notebook, script, manifest, or vendored file. Findings below distinguish confirmed code issues from areas that need further verification.
+- [ ] Fix CLI exit handling in `toolkit/main.go`
+  - Ensure `cmd.Execute()` errors are propagated and the process exits non-zero on failure.
+- [ ] Fix kubeconfig precedence in `toolkit/toolkit/k8s/client.go`
+  - Correct the current-directory fallback logic so it is checked on successful `os.Getwd()`, not on failure.
+- [ ] Add automated Go test execution to CI
+  - Run `go test` for maintained Go modules in PRs and merges.
+- [ ] Harden readiness condition validation in `toolkit/toolkit/k8s/verify.go`
+  - Validate unstructured values before assertions and avoid fragile condition-count logic.
+- [ ] Define explicit readiness semantics
+  - Document which status fields are required, supported, and how malformed objects should behave.
 
-## 1. Executive summary
+## P2 - High-value reliability and DX improvements
 
-Scaffold’s stated purpose is to make it quick and flexible to run performance benchmarks. The README describes a broad toolkit: Kubernetes helpers, shell scripts, Kustomize resources, scenario-specific benchmark workflows, mock services, and egress-gateway scale tests ([`README.md`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/README.md#L1-L13)).
+- [ ] Harden shell helper behavior in `scenarios/common.sh`
+  - Quote paths, guard `cd`, and fix state/reset issues.
+- [ ] Add local tests for `egw-scale-utils`
+  - Cover timeout handling, malformed replies, request behavior, metrics, and shutdown.
+- [ ] Make server lifecycle explicit
+  - Document bind address, shutdown path, and isolation guarantees for HTTP metrics/readiness servers.
+- [ ] Add a root-level quick start
+  - Include prerequisites, tool versions, one complete scenario, cleanup steps, and expected outputs.
+- [ ] Add contributor documentation
+  - Include setup instructions, validation commands, and maintenance expectations.
+- [ ] Define supported compatibility matrix
+  - Document supported Go, Kubernetes, container, and architecture versions.
+- [ ] Standardize benchmark scenario metadata
+  - Capture configuration, tool versions, test parameters, and machine-readable results.
+- [ ] Add scenario troubleshooting guidance
+  - Include prerequisites, resource limits, failure diagnosis, and cleanup guidance.
+- [ ] Review dependency and image security posture
+  - Add SBOM generation and dependency/image scans; review findings before version changes.
 
-**Good foundations**
-- The README explains the project’s components and several scenario workflows.
-- The Go tooling has separate modules and dependency manifests.
-- The GitHub Actions workflows pin third-party actions to commit SHAs; the lint workflow checks vendoring and runs `golangci-lint`.
-- The `egw-scale-utils` README explains the masquerade-delay and parallel-connection test designs.
-- The repository has an Apache-2.0 root license.
+## P3 - Maintenance and project hygiene
 
-**Most important issues**
-1. **CLI errors can be hidden from the shell:** `toolkit/main.go` calls `cmd.Execute()` without handling its returned error. A failing command may therefore not produce the expected nonzero process exit status.
-2. **Kubeconfig fallback is defective:** `FindKubeconfig` checks the current-directory kubeconfig only when `os.Getwd()` returns an error, rather than when it succeeds.
-3. **Reliability and test confidence are limited:** the observed CI workflows lint Go modules and build images, but do not visibly run a repository-wide test suite. Search found toolkit utility tests, but no matching test files in the other searched modules; coverage and test execution were not measured.
-4. **Scale-test client lifecycle needs scrutiny:** it serves HTTP on all interfaces, uses the default global HTTP mux, and has no visible shutdown/context path in the inspected client file.
-5. **Maintenance scope is broad:** a notebook-heavy repository also contains Go, shell, HCL, Nix, images, manifests, and vendored Go dependencies. Clearer ownership and validation boundaries would help.
+- [ ] Clarify ownership boundaries for repo components
+  - Separate maintained tooling, examples, notebooks, and legacy content.
+- [ ] Fix stale branch references and example links
+  - Replace `master` references with the current default branch where appropriate.
+- [ ] Audit example and notebook licensing
+  - Confirm third-party content has compatible licensing and attribution where required.
+- [ ] Define vendoring and dependency-update policy
+  - Document when vendored dependencies are acceptable and how they are synchronized.
+- [ ] Publish a minimal release checklist
+  - Include validation, docs, image smoke tests, cleanup, and compatibility checks.
 
-**Readiness assessment:** useful as an engineering and benchmarking toolkit, but **not yet demonstrated to have production-grade automated verification**. No critical vulnerability was confirmed from the inspected files.
+## Validation checklist
 
-## 2. Purpose and capabilities
-
-The project presents itself as a framework for scripts that run performance benchmarks. The README identifies these major areas:
-
-- `toolkit`: Go-based Kubernetes and benchmark helpers, including `lazyget`, `ron`, and `verify`.
-- `scripts` and `scenarios`: shared shell helpers and benchmark-specific workflows.
-- `kustomize`: reusable Kubernetes manifests for monitoring, registries, and test topologies.
-- `cmapisrv-mock`: a mock API server for scalability testing.
-- `egw-scale-utils`: client and external-target components for egress-gateway scale tests.
-- `examples`: container and notebook examples.
-
-The `egw-scale-utils` README describes two concrete tests: measuring the delay until a connection is successfully masqueraded, and stressing the maximum number of parallel connections ([`egw-scale-utils/README.md`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/README.md#L6-L24), [#L80-L92](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/README.md#L80-L92)).
-
-**Intended users:** engineers running Kubernetes and Khulnasoft networking performance or scale experiments. This is inferred from the repository documentation, not from an explicit audience statement.
-
-## 3. Repository structure and architecture
-
-The README is the primary architectural guide; the architecture is a collection of adjacent tools and workflows rather than one application with a single runtime. It describes the following high-level organization ([`README.md`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/README.md#L5-L13)):
-
-```mermaid
-flowchart TD
-    User[Benchmark engineer]
-    User --> Scenario[scenarios/*]
-    Scenario --> Helpers[scenarios/common.sh]
-    Scenario --> Scripts[scripts/*]
-    Scenario --> Toolkit[toolkit CLI]
-    Scenario --> Manifests[kustomize/*]
-    Toolkit --> Cluster[Kubernetes API / cluster]
-    Manifests --> Cluster
-    Scenario --> Metrics[Prometheus / Grafana]
-    Scenario --> Mock[cmapisrv-mock]
-    Scenario --> EGW[egw-scale-utils]
-    Examples[examples and notebooks]
-```
-
-**Component/dependency map**
-- `scenarios` orchestrates tests and uses shared shell helpers, scripts, the toolkit, and Kustomize resources.
-- `toolkit` is a Go CLI using Kubernetes client libraries and Cobra; the README lists `lazyget`, `ron`, and `verify`.
-- `egw-scale-utils` is a separate Go module using Cobra and Prometheus client libraries ([`egw-scale-utils/go.mod`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/go.mod)).
-- CI’s image-build matrix handles `cmapisrv-mock` and `egw-scale-utils`; the lint matrix covers those same module directories ([`build.yaml`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/.github/workflows/build.yaml#L22-L36), [`lint.yaml`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/.github/workflows/lint.yaml#L11-L16)).
-- The inspected root README does not document a unified root-level validation or developer setup command.
-
-## 4. Architecture and code quality findings
-
-| Priority | Finding | Evidence and impact | Recommended action |
-|---|---|---|---|
-| P1 | CLI error handling may report success to the shell | [`toolkit/main.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/main.go#L12-L14) ignores the error returned by `cmd.Execute()`. Automation that relies on exit codes may miss command failures. | Handle the returned error and exit nonzero; add a test that verifies command failure propagates to the process status. |
-| P1 | Current-directory kubeconfig fallback is gated by the wrong condition | [`client.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/toolkit/k8s/client.go#L33-L38) tests `err != nil && toolkit.PathExists(kubeCwd)`. In normal operation `Getwd` succeeds, so this fallback is skipped. | Return/report `Getwd` errors explicitly; check the current-directory candidate when the working directory is available. Add tests for each lookup source and for missing candidates. |
-| P2 | K8s readiness code makes unchecked assertions on unstructured values | [`verify.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/toolkit/k8s/verify.go#L146-L168) and [#L181-L203](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/toolkit/k8s/verify.go#L181-L203) assert map fields as strings and booleans. Unexpected or incomplete status data can panic rather than return a useful error. | Validate field types before use; return errors that identify resource, field, and observed type. Add malformed-object tests. |
-| P2 | A readiness exception is encoded as a fragile condition-count rule | [`verify.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/toolkit/k8s/verify.go#L190-L199) marks a resource ready for a completed container only when `len(badConditions) == 2` and `Ready` is present. Other condition combinations could change the result unexpectedly. | Document the intended Kubernetes semantics and replace the count-based exception with explicit, named conditions and table-driven tests. |
-| P2 | Shell helper quoting and state management warrant hardening | [`common.sh`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/scenarios/common.sh#L21-L30) expands `$ARTIFACTS` unquoted in `mkdir`; [#L66-L71](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/scenarios/common.sh#L66-L71) changes directories without checking the operation. `reset_vars` has a likely variable-name typo (`CENARIO_DIR`) at [#L56-L62](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/scenarios/common.sh#L56-L62). | Quote path expansions, use checked directory changes, and test `init`/`reset_vars` with overridden paths and paths containing spaces. |
-| P2 | HTTP server lifecycle and isolation are not explicit in the inspected client | [`pkg/client.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/pkg/client.go#L219-L241) registers handlers on the global mux, binds to `0.0.0.0:2112`, and calls `http.ListenAndServe` without visible timeout or shutdown handling. | Use an explicit mux and configurable server; document intended network exposure, add server timeouts, and implement signal/context-driven shutdown if lifecycle control is required. |
-
-The toolkit’s `NewK8sConfigOrDie` and client constructors terminate through `ExitWithError` on failure ([`client.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/toolkit/k8s/client.go#L49-L99)). This may be consistent with a CLI, but it makes those functions harder to reuse and unit-test. Prefer error-returning constructors at package boundaries and let the CLI decide when to exit.
-
-## 5. Dependency and supply-chain assessment
-
-- The toolkit uses Kubernetes Go modules at `v0.26.0` and Go module metadata set to `go 1.23.0` ([`toolkit/go.mod`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/go.mod#L1-L16)). These versions merit a **compatibility and support review**, not an automatic bulk upgrade.
-- `egw-scale-utils` declares Go `1.23.4`, Cobra `v1.9.1`, and Prometheus client `v1.21.1` ([`go.mod`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/go.mod#L1-L8)).
-- Its Dockerfile pins builder and runtime images by digest ([`Dockerfile`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/Dockerfile#L1-L13)); this is a useful reproducibility practice.
-- The lint workflow checks vendoring consistency and runs `golangci-lint` for two modules ([`lint.yaml`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/.github/workflows/lint.yaml#L30-L44)).
-- Recent commits show Dependabot updates for Go and Python dependencies. The repository also contains vendored Go dependencies, which add repository size and require disciplined synchronization.
-- I did not run vulnerability, license, or unused-dependency scanners. **No dependency vulnerability or license incompatibility is confirmed by this audit.**
-
-**Recommended next steps:** generate SBOMs for published images; add automated dependency/security scanning; establish a policy for when vendoring is required; review Kubernetes-client compatibility and deprecation implications before updating.
-
-## 6. Security audit
-
-**No critical or high-severity vulnerability was confirmed in the inspected material.** This is a limited source review, not a penetration test or full scan.
-
-| Severity | Finding/status | Evidence, impact, and remediation |
-|---|---|---|
-| Medium — operational exposure to assess | Metrics and readiness server listens on all interfaces | [`pkg/client.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/pkg/client.go#L226-L239) binds `0.0.0.0:2112`. This may be intentional for Kubernetes probes and scraping, but exposure depends on the Pod network and Service configuration, which were not fully audited. Verify NetworkPolicy and Service exposure; consider a configurable bind address. |
-| Low — resilience | Unstructured status assertions can panic | See `verify.go` references above. This is primarily a reliability issue, but malformed inputs can terminate a command unexpectedly. Validate types and test malformed objects. |
-| Informational — coverage gap | No full security scan was run | Secret scanning, image scanning, permission review, and complete process/network/file-system analysis remain unverified. Add automated scanning before making stronger security claims. |
-
-For the scale utility, explicitly document that `--stress` intentionally opens many connections and define safe limits for test environments. The inspected client code has a 5-second dial timeout in stress mode, but no visible user-configurable connection ceiling ([`pkg/client.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/egw-scale-utils/pkg/client.go#L66-L104)). This is a **resource-management concern**, not by itself a vulnerability.
-
-## 7. Testing and reliability
-
-**What is visible**
-- Toolkit utility tests exist, for example [`util_test.go`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/toolkit/toolkit/util_test.go#L1-L128).
-- The lint workflow checks vendoring and lint rules.
-- The build workflow builds container images for changed modules and supports `linux/amd64` and `linux/arm64` ([`build.yaml`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/.github/workflows/build.yaml#L89-L98)).
-
-**Gaps observed**
-- The inspected workflows do not visibly run `go test` or shell tests.
-- Search found no matching `_test.go` files in `egw-scale-utils` or `cmapisrv-mock`; this does not establish that no other test mechanism exists.
-- No test run or coverage report was available, so test health is **unknown**, not passed.
-- Network timing and stress behavior would benefit from deterministic tests using local test servers rather than live cluster dependencies.
-
-**Recommended tests**
-1. Table-driven tests for kubeconfig precedence, including the current-directory fallback.
-2. Readiness tests for missing, mistyped, unknown, and contradictory condition fields.
-3. Client tests for dial errors, malformed replies, timeout behavior, stress termination, and metrics.
-4. Shell checks for `common.sh` path overrides, quoted paths, and reset behavior.
-5. CI jobs to run Go tests, shell lint/tests, and Kustomize validation on changed files.
-6. Integration tests for image entrypoints and a small local or ephemeral-cluster scenario.
-
-## 8. Missing capabilities and DX gaps
-
-“Missing” here means **not observed in the inspected files**, not proof that the capability does not exist elsewhere.
-
-| Capability | Status | Priority | Suggested acceptance criteria |
-|---|---|---:|---|
-| Single documented local validation entrypoint | Not observed | P1 | One documented command runs relevant Go tests, lint, shell checks, and manifest validation. |
-| Automated Go and shell test execution in CI | Not observed in inspected workflows | P1 | Pull requests run tests for affected modules and fail on regressions. |
-| Structured test results and reproducible artifacts | Partial; scenarios describe artifacts | P2 | Each scenario records tool versions, configuration, test parameters, and machine-readable results. |
-| Security/SBOM reporting | Not verified | P2 | CI publishes dependency/image scan results and an SBOM for released images. |
-| Explicit support and compatibility policy | Not observed | P2 | Documentation states supported Go, Kubernetes, container, and architecture versions. |
-| Scenario-level troubleshooting guides | Partial | P2 | Each maintained scenario lists prerequisites, cleanup, expected outputs, failure diagnosis, and safe resource limits. |
-
-Do not add AST migration tooling, plugin systems, or API compatibility automation simply because the reusable prompt lists them. For this repository, first establish whether the small Go utilities expose stable public APIs or are principally internal benchmark tooling.
-
-## 9. Documentation and open-source readiness
-
-**Strengths:** the root README gives a meaningful project map and describes reusable manifests and scenarios; `egw-scale-utils` includes sequence and metric descriptions. The repository has an Apache-2.0 `LICENSE`.
-
-**Improvements**
-- Add a concise “quick start” with prerequisites, tested tool versions, one complete scenario, cleanup steps, and expected outputs.
-- Add a contributor guide with validation commands and rules for notebooks, generated/vendor files, and scenario artifacts.
-- Clarify support expectations and ownership for the many repository areas.
-- Check examples for stale links and consistent licensing. For instance, `examples/README.md` contains `master`-branch links while the repository default branch is `main` ([`examples/README.md`](https://github.com/khulnasoft/scaffold/blob/14313974f327fbefef6893f12f06fba4e71bc092/examples/README.md#L12-L21)).
-- Audit third-party notebook/example licenses individually; the root Apache-2.0 license does not by itself prove every included example has identical terms.
-- Consider a root-level index separating maintained benchmark tooling from example notebooks and legacy content.
-
-`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, changelog, and PR templates were not present in the inspected top-level listing. Confirm the full tree before treating these as definitively absent.
-
-## 10. Competitive benchmark
-
-This is a **pattern-based comparison**, not a verified feature-by-feature audit of the comparison projects.
-
-- **Kubernetes test tools such as `kube-burner`:** useful patterns to evaluate include parameterized workload definitions, repeatable test metadata, and machine-readable result output.
-- **Load-test tools such as `k6`:** useful patterns include explicit scenario configuration, thresholds, and standardized result formats.
-- **Kubernetes-native packaging practices:** useful patterns include schema validation, documented resource requests/limits, and lifecycle/cleanup checks.
-
-Scaffold’s differentiator appears to be its collection of Khulnasoft-focused scenarios and reusable infrastructure—not a general-purpose load-testing engine. Borrow reporting and reproducibility patterns where useful; do not replace the repository’s scenario model without evidence that it is blocking users.
-
-## 11. Technical debt and prioritized backlog
-
-| ID | Component | Current state / problem | Proposed change and benefit | Risk | Effort | Priority | Acceptance criteria |
-|---|---|---|---|---|---:|---:|---|
-| SC-01 | `toolkit/main.go` | `Execute()` error ignored; automation may see success on failure | Propagate CLI errors to process exit status | Low; could alter callers’ observed exit behavior | S | P1 | Failure returns nonzero; success remains zero |
-| SC-02 | `toolkit/toolkit/k8s/client.go` | CWD fallback condition is incorrect | Correct lookup and cover precedence with tests | Low | S | P1 | Tests cover env, CWD, home, and no-config paths |
-| SC-03 | Go CI | Tests not visible in inspected workflows | Run tests for maintained Go modules | Medium: may uncover existing failures | M | P1 | CI executes relevant `go test` commands |
-| SC-04 | `toolkit/toolkit/k8s/verify.go` | Unchecked assertions and fragile readiness exception | Validate fields and define readiness semantics | Medium: behavior may change for edge cases | M | P1 | Table-driven tests cover malformed and supported statuses |
-| SC-05 | Shell helpers | Unquoted paths, unchecked `cd`, reset typo | Harden and test shared shell functions | Low | S | P2 | Shell checks pass with spaces and overrides |
-| SC-06 | `egw-scale-utils` | No visible unit tests; HTTP lifecycle is implicit | Add local-server tests and explicit server lifecycle | Medium | M | P2 | Timeout, request, metrics, and shutdown behavior tested |
-| SC-07 | Dependencies/images | Security and SBOM status unverified | Add scans and SBOM generation; review versions compatibly | Medium: workflow maintenance | M | P2 | CI produces actionable scan and SBOM artifacts |
-| SC-08 | Documentation | Developer path and compatibility policy are incomplete/unclear | Add quick start, support matrix, contribution and troubleshooting guidance | Low | M | P2 | New contributor can run one scenario and validation from docs |
-| SC-09 | Repository organization | Broad, notebook-heavy content makes maintenance boundaries unclear | Label maintained components and add top-level index | Low | M | P3 | Each top-level area has owner/status and validation expectations |
-| SC-10 | Benchmark scenarios | Result metadata and reproducibility not verified across scenarios | Standardize configuration/version/result metadata | Medium | L | P2 | Two representative scenarios emit comparable metadata |
-
-## 12. Phased roadmap
-
-### Phase A — Critical fixes
-- Fix CLI exit status and kubeconfig fallback.
-- Validate readiness input before type assertions.
-- Add regression tests for these cases.
-
-**Validation:** `cd toolkit && go test ./...`; exercise CLI success/failure and kubeconfig precedence.
-
-### Phase B — Engineering foundation
-- Add CI test jobs for relevant Go modules.
-- Add shell linting/tests and Kustomize build validation for changed manifests.
-- Define which modules are maintained and how vendored dependencies are updated.
-
-**Validation:** CI passes on a test-only PR; `go test ./...` per module; shell and manifest checks run in CI.
-
-### Phase C — Core reliability
-- Specify readiness-condition semantics.
-- Add deterministic local tests for the egress client and external-target behavior.
-- Make stress-test limits and test cleanup behavior explicit.
-
-**Validation:** table-driven unit tests, local integration tests, and documented test limits.
-
-### Phase D — Developer experience
-- Add quick start, prerequisites, troubleshooting, and contributor instructions.
-- Document artifact formats and test metadata.
-- Fix stale branch links and clarify example licensing.
-
-**Validation:** follow the documentation from a clean checkout without relying on undocumented steps.
-
-### Phase E — Advanced capabilities
-- Standardize scenario metadata/results where it improves comparisons.
-- Add SBOM and dependency/image scanning.
-- Consider performance baselines only after repeatable test inputs and outputs exist.
-
-**Validation:** sample scenarios emit reproducible metadata; CI publishes scan/SBOM artifacts.
-
-### Phase F — Release and operational readiness
-- Document compatibility and release/versioning expectations.
-- Verify container image runtime behavior, shutdown, and network exposure.
-- Run end-to-end scenarios on supported architectures and Kubernetes versions.
-
-**Validation:** release checklist, image smoke tests, supported-version matrix, and documented cleanup.
-
-## 13. Production-readiness scorecard
-
-| Dimension | Assessment |
-|---|---|
-| Mission and use cases | **Good** — concrete benchmark scenarios and focused utility components |
-| Architecture | **Moderate** — understandable collection of tools, but broad and loosely standardized |
-| Code robustness | **Needs work** — two direct Go issues identified; input validation should improve |
-| Testing and CI | **Needs evidence** — lint/build automation exists, but automated test execution was not visible |
-| Security | **Partially assessed** — no confirmed critical issue; scans and exposure review remain |
-| Dependencies | **Managed, needs review** — Dependabot activity and pinned images; compatibility and supply-chain checks still needed |
-| Documentation | **Moderate** — useful project descriptions, but contributor setup and maintenance expectations need strengthening |
-| Release readiness | **Unknown/partial** — image builds exist; a complete release and compatibility policy was not established |
-
-## 14. Recommended next 10 engineering tasks
-
-1. Handle `cmd.Execute()` errors in `toolkit/main.go`.
-2. Fix and test kubeconfig discovery precedence.
-3. Add Go test execution to CI for every maintained module.
-4. Replace unchecked readiness-status assertions with validated reads.
-5. Add table-driven readiness tests, including malformed objects and supported condition combinations.
-6. Add local integration tests for egress-client reply, timeout, and stress behavior.
-7. Make the metrics/readiness server’s bind address and shutdown behavior explicit.
-8. Quote and validate filesystem operations in `scenarios/common.sh`; test the reset function.
-9. Add a root-level quick start, contribution instructions, and supported-tool/version matrix.
-10. Add dependency/image scanning and SBOM generation, then review findings before changing dependency versions.
-
-**Audit limitations:** I did not execute builds or tests, run security/dependency scanners, inspect every source file or notebook, or verify benchmark behavior in a live Kubernetes cluster. The recommendations are therefore a prioritized static review, not a claim that the project fails to build or has exploitable vulnerabilities.
-
-The repository’s latest commit results contain additional entries beyond the first 10. [View the commits in GitHub](https://github.com/khulnasoft/scaffold/commits/main/?page=2).
+- [ ] `cd toolkit && go test ./...`
+- [ ] CLI success/failure behavior verified
+- [ ] Kubeconfig precedence tests pass
+- [ ] Readiness validation tests pass
+- [ ] Shell helper tests pass
+- [ ] Local integration tests for egress client/server pass
+- [ ] CI runs module tests for all maintained components
+- [ ] Documentation can be followed from a clean checkout without hidden steps
